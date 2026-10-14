@@ -1,18 +1,36 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
+import * as SplashScreen from "expo-splash-screen";
+import { Platform } from "react-native";
+import { NotificationOpen } from "@/ui/notification-open";
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { AppProvider, useApp } from "@/state/app";
+if (Platform.OS !== "web") {
+  void SplashScreen.preventAutoHideAsync().catch(() => {});
+  SplashScreen.setOptions({ duration: 180, fade: true });
+}
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
-
-SplashScreen.preventAutoHideAsync();
-
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+function Navigation() {
+  const { dark, colors } = useApp();
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
-    </ThemeProvider>
+    <>
+      <NotificationOpen />
+      <StatusBar style={dark ? "light" : "dark"} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      />
+    </>
+  );
+}
+export default function Layout() {
+  return (
+    <SafeAreaProvider>
+      <AppProvider>
+        <Navigation />
+      </AppProvider>
+    </SafeAreaProvider>
   );
 }
