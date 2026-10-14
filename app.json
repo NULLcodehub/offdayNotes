@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "OFFDAY Note",
+    "name": "Offday Note",
     "slug": "offday-note",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -40,6 +40,7 @@
       "favicon": "./assets/images/offday-favicon.png"
     },
     "plugins": [
+      "./plugins/with-splash-wordmark.cjs",
       [
         "expo-router",
         {

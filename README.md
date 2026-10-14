@@ -97,4 +97,4 @@ White, Olive and Black themes; hidden scrollbars; direct Settings access beside 
 
 ### Colored tags and note actions
 
-Hold a note to open actions for tags, reminders, pinning, archive/restore and confirmed deletion. Choose Add tags to select multiple tags or create a name and choose one of six colors. Tap Tags below the title while writing a new or existing note for the same sheet. Tap Done to save assignments. Small colored chips appear in the editor and note list. Tags persist offline and are included in version 2 backups; version 1 backups remain supported.
+Hold a note to open actions for tags, reminders, pinning, archive/restore and confirmed deletion. Choose Add tags to select multiple tags or create a name and choose one of six colors. Tap Tags below the title while writing a new or existing note for the same sheet. Tap Save tags to save assignments. Tag creation opens separately through ＋ Create tag, with Create & select returning to the selection view. Small colored chips appear in the editor and note list. Tags persist offline and are included in version 2 backups; version 1 backups remain supported.

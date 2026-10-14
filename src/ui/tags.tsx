@@ -55,6 +55,7 @@ export function TagSheet({
   const { repo, colors, refresh } = useApp();
   const [tags, setTags] = useState<Tag[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
+  const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [color, setColor] = useState(tagColors[0].value);
   const [loading, setLoading] = useState(true);
@@ -92,6 +93,7 @@ export function TagSheet({
       setTags(await repo.tags());
       setSelected((ids) => (ids.includes(tag.id) ? ids : [...ids, tag.id]));
       setName("");
+      setCreating(false);
     } catch {
       setError("The tag could not be created. Check its name and try again.");
     } finally {
@@ -117,132 +119,150 @@ export function TagSheet({
     <Sheet
       visible
       close={() => {
-        if (!busy) close();
+        if (busy) return;
+        if (creating) {
+          setCreating(false);
+          setError("");
+        } else close();
       }}
-      title="Add tags"
+      title={creating ? "New tag" : "Tags"}
+      closeLabel={creating ? "Back" : "Close"}
     >
-      <Label muted style={{ fontSize: 13, paddingVertical: 12 }}>
-        Choose tags for this note.
-      </Label>
-      {loading ? (
-        <Label muted>Loading tags…</Label>
-      ) : !tags.length ? (
-        <Label muted style={{ paddingVertical: 12 }}>
-          Create your first tag below.
-        </Label>
-      ) : (
-        tags.map((tag) => (
-          <Pressable
-            key={tag.id}
-            disabled={busy}
-            accessibilityRole="checkbox"
-            accessibilityLabel={tag.name}
-            accessibilityState={{
-              checked: selected.includes(tag.id),
-              disabled: busy,
-            }}
-            onPress={() =>
-              setSelected((ids) =>
-                ids.includes(tag.id)
-                  ? ids.filter((id) => id !== tag.id)
-                  : [...ids, tag.id],
-              )
-            }
-            style={({ pressed }) => ({
-              minHeight: 52,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 12,
-              borderBottomWidth: 0.5,
-              borderColor: colors.line,
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <View
-              style={{
-                width: 12,
-                height: 12,
-                borderRadius: 6,
-                backgroundColor: tag.color,
-              }}
-            />
-            <Label style={{ flex: 1 }}>{tag.name}</Label>
-            <Label style={{ color: colors.accent }}>
-              {selected.includes(tag.id) ? "✓" : ""}
+      {!creating && (
+        <>
+          {loading ? (
+            <Label muted>Loading tags…</Label>
+          ) : !tags.length ? (
+            <Label muted style={{ paddingVertical: 12 }}>
+              No tags yet.
             </Label>
-          </Pressable>
-        ))
-      )}
-      <View style={{ marginTop: 24, gap: 12 }}>
-        <Label muted style={{ fontSize: 11, letterSpacing: 1.5 }}>
-          CREATE A TAG
-        </Label>
-        <TextInput
-          editable={!busy && !loading}
-          accessibilityLabel="New tag name"
-          placeholder="Education, Meeting…"
-          placeholderTextColor={colors.muted}
-          value={name}
-          maxLength={40}
-          onChangeText={setName}
-          returnKeyType="done"
-          onSubmitEditing={() => {
-            if (name.trim() && !loading) void create();
-          }}
-          style={{
-            color: colors.text,
-            backgroundColor: colors.surface,
-            fontSize: 16,
-            minHeight: 48,
-            paddingHorizontal: 14,
-            borderRadius: 10,
-          }}
-        />
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-          {tagColors.map((option) => (
-            <Pressable
-              key={option.value}
-              disabled={busy || loading}
-              accessibilityRole="radio"
-              accessibilityLabel={option.name + " tag color"}
-              accessibilityState={{ checked: color === option.value }}
-              onPress={() => setColor(option.value)}
-              style={{
-                width: 44,
-                height: 44,
-                justifyContent: "center",
-                alignItems: "center",
-                borderWidth: color === option.value ? 2 : 0,
-                borderColor: colors.text,
-                borderRadius: 24,
-              }}
-            >
-              <View
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 15,
-                  backgroundColor: option.value,
+          ) : (
+            tags.map((tag) => (
+              <Pressable
+                key={tag.id}
+                disabled={busy}
+                accessibilityRole="checkbox"
+                accessibilityLabel={tag.name}
+                accessibilityState={{
+                  checked: selected.includes(tag.id),
+                  disabled: busy,
                 }}
-              />
-            </Pressable>
-          ))}
+                onPress={() =>
+                  setSelected((ids) =>
+                    ids.includes(tag.id)
+                      ? ids.filter((id) => id !== tag.id)
+                      : [...ids, tag.id],
+                  )
+                }
+                style={({ pressed }) => ({
+                  minHeight: 52,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  borderBottomWidth: 0.5,
+                  borderColor: colors.line,
+                  opacity: pressed ? 0.6 : 1,
+                })}
+              >
+                <View
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: 6,
+                    backgroundColor: tag.color,
+                  }}
+                />
+                <Label style={{ flex: 1 }}>{tag.name}</Label>
+                <Label style={{ color: colors.accent }}>
+                  {selected.includes(tag.id) ? "✓" : ""}
+                </Label>
+              </Pressable>
+            ))
+          )}
+          <Button
+            label="＋ Create tag"
+            disabled={busy || loading}
+            onPress={() => {
+              setName("");
+              setColor(tagColors[0].value);
+              setError("");
+              setCreating(true);
+            }}
+          />
+          <Message text={error} error />
+          <View style={{ paddingTop: 16 }}>
+            <Button
+              primary
+              label={busy ? "Saving…" : "Save tags"}
+              disabled={busy || loading || !tags.length}
+              onPress={() => void save()}
+            />
+          </View>
+        </>
+      )}
+      {creating && (
+        <View style={{ marginTop: 16, gap: 16 }}>
+          <TextInput
+            autoFocus
+            editable={!busy && !loading}
+            accessibilityLabel="New tag name"
+            placeholder="Tag name"
+            placeholderTextColor={colors.muted}
+            value={name}
+            maxLength={40}
+            onChangeText={setName}
+            returnKeyType="done"
+            onSubmitEditing={() => {
+              if (name.trim() && !loading) void create();
+            }}
+            style={{
+              color: colors.text,
+              backgroundColor: colors.surface,
+              fontSize: 16,
+              minHeight: 48,
+              paddingHorizontal: 14,
+              borderRadius: 10,
+            }}
+          />
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {tagColors.map((option) => (
+              <Pressable
+                key={option.value}
+                disabled={busy || loading}
+                accessibilityRole="radio"
+                accessibilityLabel={option.name + " tag color"}
+                accessibilityState={{ checked: color === option.value }}
+                onPress={() => setColor(option.value)}
+                style={{
+                  width: 44,
+                  height: 44,
+                  justifyContent: "center",
+                  alignItems: "center",
+                  borderWidth: color === option.value ? 2 : 0,
+                  borderColor: colors.text,
+                  borderRadius: 24,
+                }}
+              >
+                <View
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 15,
+                    backgroundColor: option.value,
+                  }}
+                />
+              </Pressable>
+            ))}
+          </View>
+          <Button
+            primary
+            label={busy ? "Creating…" : "Create & select"}
+            disabled={busy || loading || !name.trim()}
+            onPress={() => void create()}
+          />
+          <Message text={error} error />
         </View>
-        <Button
-          label="Create tag"
-          disabled={busy || loading || !name.trim()}
-          onPress={() => void create()}
-        />
-      </View>
-      <Message text={error} error />
-      <View style={{ paddingTop: 16 }}>
-        <Button
-          primary
-          label={busy ? "Saving…" : "Done"}
-          disabled={busy || loading}
-          onPress={() => void save()}
-        />
-      </View>
+      )}
     </Sheet>
   );
 }

@@ -34,11 +34,30 @@ A small ON icon and OFFDAY Note name appear above home search; the search/Settin
 ## Colored tags and long-press actions
 
 - Hold any note to open its actions: Add tags, reminder, pin/unpin, archive/restore and confirmed delete.
-- Choose Add tags to open the bottom sheet. Select several existing tags or enter a new tag name, pick Olive/Blue/Purple/Rose/Amber/Teal and tap Create tag. Tap Done to save the note’s assignments. Closing the sheet cancels assignment changes; a newly created tag remains available for other notes.
+- Choose Add tags to open the bottom sheet. Select existing tags, then tap Save tags. To create one, tap ＋ Create tag; a separate New tag view shows the name and color choices. Tap Create & select to return to the list with that tag selected, then Save tags. Closing the sheet cancels assignment changes; a newly created tag remains available for other notes.
 - While creating or editing a note, tap Tags below its title or use Add tags in the note menu.
 - Assigned tags appear as compact chips with colored dots in the list and editor.
 - Tags stay offline in SQLite. The schema update preserves existing notes. Version 2 backups include colors and assignments; old version 1 backups still restore.
 - No app build or commit was run for this feature. Native long-press and keyboard/sheet layout still need checking after your build.
+
+## Editor and tag flow fixes
+
+Tag selection and creation are separate views with one primary action in each: Save tags or Create & select. New notes show Title (optional) and Start writing here… in the content area, including when ProseMirror renders a trailing line-break element. Heading opens a chooser for H1–H6 with superscript levels; the toolbar displays the current level. Bold and Italic show their active state immediately before typing. Adding a link without selected text inserts the visible address; selected text is linked without being replaced, and editing inside an existing link updates its range.
+
+## Wordmark and save status
+
+The home header now centers Offday Note in light sans-serif typography inspired by the ON mark, without an adjacent icon. The ON launcher/splash artwork is retained. Platform fonts are Helvetica Neue Thin on iOS and sans-serif-thin on Android; this is a typographic interpretation, not an identified font from the raster logo. Save status uses a small neutral capsule with a dot and Saved/Saving/Not saved text; existing retry controls remain on failure. The launcher display name is now Offday Note; run prebuild below to apply it. No app build or commit was made.
+
+## Latest editor, splash and list refinement
+
+- The native Android 12+ splash has a bottom Offday Note wordmark using a config plugin. The matching startup view shows the ON mark and bottom name while SQLite opens on all platforms. There is no artificial startup delay. Earlier Android and iOS native launch screens initially show ON, then transition to this startup view.
+- The empty notebook says only Your first note above its centered +.
+- Heading taps cycle H6 → H5 → H4 → H3 → H2 → H1 → H6. Hold for 450 ms to choose H1–H6 or Paragraph. Keyboard Arrow Down/right click also opens the chooser.
+- Undo and Redo icons stay fixed on the right of the toolbar; formatting tools scroll independently. History buttons reflect whether an action is available.
+- Paragraph spacing and line height are tighter. Live checklist items now carry the attribute used for horizontal checkbox/text layout; the checkbox stays beside the first text line.
+- List dates share the title row. Titles truncate to one line and previews to two; reminders remain a separate concise line only when needed.
+
+Run prebuild below to apply the new native splash wordmark. No app build or commit was run here.
 
 ## Build an Android APK
 
@@ -103,7 +122,7 @@ npm run ios
 
 - Strict TypeScript check passed.
 - Expo lint passed.
-- All 39 tests passed, including the keyboard viewport/touch-control regression test.
+- All 45 tests passed, including the keyboard viewport/touch-control regression test.
 - No app build was run. The earlier APK and browser export do not include the current design and branding until you rebuild them.
 - Icon/splash dimensions, transparency and adaptive-icon safe padding are checked by `prepare:brand`. Native splash/launcher appearance still needs verification after your build.
 

@@ -127,7 +127,10 @@ export function validateDoc(
     (!n.attrs || typeof n.attrs !== "object" || Array.isArray(n.attrs))
   )
     throw new Error("Invalid note attributes.");
-  if (n.type === "heading" && ![1, 2, 3].includes(Number(n.attrs?.level)))
+  if (
+    n.type === "heading" &&
+    ![1, 2, 3, 4, 5, 6].includes(Number(n.attrs?.level))
+  )
     throw new Error("Invalid heading.");
   if (n.type === "taskItem" && typeof n.attrs?.checked !== "boolean")
     throw new Error("Invalid checklist.");

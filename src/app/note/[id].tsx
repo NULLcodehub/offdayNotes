@@ -223,15 +223,44 @@ export default function NoteEditor() {
                         ? "Saving"
                         : "Saved on device"
                   }
-                  style={{ paddingHorizontal: 8 }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 16,
+                    backgroundColor: colors.surface,
+                  }}
                 >
+                  <View
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      borderWidth: status === "saving" ? 1 : 0,
+                      borderColor: colors.muted,
+                      backgroundColor:
+                        status === "saving"
+                          ? "transparent"
+                          : status === "error"
+                            ? colors.danger
+                            : colors.accent,
+                    }}
+                  />
                   <Label
                     style={{
-                      fontSize: 16,
+                      fontSize: 11,
+                      fontWeight: "500",
+                      letterSpacing: 0.2,
                       color: status === "error" ? colors.danger : colors.muted,
                     }}
                   >
-                    {status === "error" ? "!" : status === "saving" ? "◌" : "✓"}
+                    {status === "error"
+                      ? "Not saved"
+                      : status === "saving"
+                        ? "Saving"
+                        : "Saved"}
                   </Label>
                 </View>
                 <Menu
@@ -287,7 +316,7 @@ export default function NoteEditor() {
           <>
             <TextInput
               accessibilityLabel="Optional note title"
-              placeholder="Untitled"
+              placeholder="Title (optional)"
               placeholderTextColor={colors.muted}
               value={note.title}
               onChangeText={(title) => {

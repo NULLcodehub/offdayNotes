@@ -17,10 +17,17 @@ export function Label({
   children,
   muted,
   style,
-}: PropsWithChildren<{ muted?: boolean; style?: TextStyle }>) {
+  numberOfLines,
+}: PropsWithChildren<{
+  muted?: boolean;
+  style?: TextStyle;
+  numberOfLines?: number;
+}>) {
   const { colors } = useApp();
   return (
     <Text
+      numberOfLines={numberOfLines}
+      ellipsizeMode="tail"
       style={[
         { color: muted ? colors.muted : colors.text, fontSize: 16 },
         style,
@@ -166,7 +173,13 @@ export function Sheet({
   title,
   visible,
   close,
-}: PropsWithChildren<{ title: string; visible: boolean; close: () => void }>) {
+  closeLabel = "Close",
+}: PropsWithChildren<{
+  title: string;
+  visible: boolean;
+  close: () => void;
+  closeLabel?: string;
+}>) {
   const { colors } = useApp();
   return (
     <Modal
@@ -207,7 +220,7 @@ export function Sheet({
             }}
           >
             <Label style={{ fontWeight: "600", fontSize: 20 }}>{title}</Label>
-            <Button label="Close" onPress={close} />
+            <Button label={closeLabel} onPress={close} />
           </View>
           <ScrollView
             showsVerticalScrollIndicator={false}

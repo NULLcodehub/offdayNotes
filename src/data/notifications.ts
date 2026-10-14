@@ -29,7 +29,7 @@ export const notificationPort: NotificationPort = {
       identifier,
       content: {
         title,
-        body: "A quiet reminder from OFFDAY Note.",
+        body: "A quiet reminder from Offday Note.",
         data: { noteId },
         sound: "default",
       },

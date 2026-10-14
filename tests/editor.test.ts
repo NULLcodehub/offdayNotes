@@ -86,6 +86,17 @@ test("bundled editor loads offline, preserves structured JSON and toggles checkl
   await pause();
   assert.deepEqual(errors, []);
   assert.ok(messages.some((m) => m.type === "ready"));
+  const checkbox = dom.window.document.querySelector("input[type=checkbox]")!;
+  const item = checkbox.closest("li")!;
+  assert.equal(item.dataset.type, "taskItem");
+  assert.equal(dom.window.getComputedStyle(item).display, "flex");
+  assert.equal(dom.window.getComputedStyle(item).flexDirection, "row");
+  assert.equal(item.children[0].tagName, "LABEL");
+  assert.equal(item.children[1].tagName, "DIV");
+  assert.equal(
+    dom.window.getComputedStyle(item.querySelector("p")!).marginBottom,
+    "0px",
+  );
   (dom.window as any).offdayCommand({ type: "snapshot", request: "test" });
   let snapshot = messages.find((m) => m.type === "snapshot");
   validateDoc(snapshot.content);
@@ -315,5 +326,195 @@ test("editor applies bare and HTTP links, rejects unsafe input and keeps Black t
   );
   (dom.window as any).offdayCommand({ type: "snapshot", request: "links" });
   validateDoc(messages.find((m) => m.request === "links").content);
+  dom.window.close();
+});
+
+function blankEditor() {
+  const messages: any[] = [];
+  const dom = new JSDOM(
+    editorDocument.replace(
+      "__CONFIG__",
+      JSON.stringify({
+        content: { type: "doc", content: [{ type: "paragraph" }] },
+        background: "#FFFFFF",
+        text: "#242823",
+        muted: "#656C60",
+        line: "#E1E2D8",
+        accent: "#536749",
+        font: "system",
+        focus: false,
+      }),
+    ),
+    {
+      runScripts: "dangerously",
+      pretendToBeVisual: true,
+      beforeParse(w) {
+        w.Range.prototype.getClientRects = () => [] as any;
+        w.Range.prototype.getBoundingClientRect = () =>
+          ({ top: 0, bottom: 0, left: 0, right: 0 }) as DOMRect;
+        (w as any).ReactNativeWebView = {
+          postMessage: (raw: string) => messages.push(JSON.parse(raw)),
+        };
+      },
+    },
+  );
+  const d = dom.window.document;
+  const button = (label: string) =>
+    d.querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement;
+  const snapshot = () => {
+    (dom.window as any).offdayCommand({
+      type: "snapshot",
+      request: String(messages.length),
+    });
+    return messages.at(-1).content as DocNode;
+  };
+  return { dom, d, button, snapshot };
+}
+
+test("blank editor shows the writing cue and Bold/Italic activate immediately before typing", async () => {
+  const { dom, d, button, snapshot } = blankEditor();
+  await pause();
+  assert.equal(
+    (d.querySelector(".tiptap") as HTMLElement).dataset.empty,
+    "true",
+  );
+  assert.ok(d.querySelector(".tiptap p br")); // ProseMirror's trailing BR no longer hides the cue.
+  for (const label of ["Bold", "Italic"]) {
+    assert.equal(button(label).getAttribute("aria-pressed"), "false");
+    button(label).click();
+    assert.equal(button(label).getAttribute("aria-pressed"), "true");
+    assert.equal(snapshot().content![0].content, undefined);
+    button(label).click();
+    assert.equal(button(label).getAttribute("aria-pressed"), "false");
+  }
+  dom.window.close();
+});
+
+test("heading chooser supports H1–H6 and the toolbar superscript follows the selected level", async () => {
+  const { dom, d, button, snapshot } = blankEditor();
+  await pause();
+  for (const level of [1, 2, 3, 4, 5, 6]) {
+    button("Heading").dispatchEvent(
+      new dom.window.MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    assert.equal(d.getElementById("heading-levels")!.hidden, false);
+    button(`Heading ${level}`).click();
+    assert.equal(d.getElementById("heading-levels")!.hidden, true);
+    assert.equal(
+      button("Heading").querySelector("sup")?.textContent,
+      String(level),
+    );
+    const content = snapshot();
+    validateDoc(content);
+    assert.equal(content.content![0].attrs?.level, level);
+  }
+  button("Heading").dispatchEvent(
+    new dom.window.MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  button("Paragraph style").click();
+  assert.equal(button("Heading").querySelector("sup"), null);
+  assert.equal(snapshot().content![0].type, "paragraph");
+  dom.window.close();
+});
+
+test("adding a link at an empty cursor inserts visible text and editing inside it updates the existing link", async () => {
+  const { dom, d, button, snapshot } = blankEditor();
+  await pause();
+  button("Link").click();
+  const input = d.getElementById("link-url") as HTMLInputElement;
+  input.value = "example.com";
+  button("Apply link").click();
+  const anchor = d.querySelector(".tiptap a")!;
+  assert.equal(anchor.textContent, "https://example.com");
+  assert.equal(anchor.getAttribute("href"), "https://example.com");
+  assert.equal(
+    (d.querySelector(".tiptap") as HTMLElement).dataset.empty,
+    "false",
+  );
+  validateDoc(snapshot());
+  (d.querySelector(".tiptap") as HTMLElement).focus();
+  const range = d.createRange();
+  range.setStart(anchor.firstChild!, 4);
+  range.collapse(true);
+  dom.window.getSelection()!.removeAllRanges();
+  dom.window.getSelection()!.addRange(range);
+  d.dispatchEvent(new dom.window.Event("selectionchange"));
+  await pause();
+  button("Link").click();
+  assert.equal(input.value, "https://example.com");
+  input.value = "http://example.org";
+  button("Apply link").click();
+  assert.equal(d.querySelectorAll(".tiptap a").length, 1);
+  assert.equal(
+    d.querySelector(".tiptap a")!.getAttribute("href"),
+    "http://example.org",
+  );
+  assert.equal(
+    d.querySelector(".tiptap a")!.textContent,
+    "https://example.com",
+  );
+  validateDoc(snapshot());
+  dom.window.close();
+});
+
+test("heading taps cycle downward, holding opens choices and toolbar drags cancel the hold", async () => {
+  const { dom, d, button, snapshot } = blankEditor();
+  await pause();
+  for (const level of [6, 5, 4, 3, 2, 1, 6]) {
+    button("Heading").click();
+    assert.equal(snapshot().content![0].attrs?.level, level);
+    assert.equal(d.getElementById("heading-levels")!.hidden, true);
+  }
+  const heading = button("Heading");
+  heading.dispatchEvent(
+    new dom.window.MouseEvent("pointerdown", {
+      clientX: 0,
+      clientY: 0,
+      cancelable: true,
+    }),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 480));
+  heading.dispatchEvent(new dom.window.MouseEvent("pointerup"));
+  heading.click();
+  assert.equal(d.getElementById("heading-levels")!.hidden, false);
+  assert.equal(snapshot().content![0].attrs?.level, 6);
+  button("Heading 4").click();
+  heading.dispatchEvent(
+    new dom.window.MouseEvent("pointerdown", {
+      clientX: 0,
+      clientY: 0,
+      cancelable: true,
+    }),
+  );
+  heading.dispatchEvent(
+    new dom.window.MouseEvent("pointermove", { clientX: 40, clientY: 0 }),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 480));
+  heading.dispatchEvent(new dom.window.MouseEvent("pointerup"));
+  assert.equal(d.getElementById("heading-levels")!.hidden, true);
+  assert.equal(snapshot().content![0].attrs?.level, 4);
+  dom.window.close();
+});
+
+test("fixed undo and redo controls restore editor changes and reflect history availability", async () => {
+  const { dom, d, button, snapshot } = blankEditor();
+  await pause();
+  assert.equal(button("Undo").parentElement!.id, "history");
+  assert.equal(button("Redo").parentElement!.id, "history");
+  assert.equal(d.querySelector('#toolbar button[aria-label="Undo"]'), null);
+  assert.equal(button("Undo").disabled, true);
+  button("Heading").click();
+  assert.equal(button("Undo").disabled, false);
+  button("Undo").click();
+  assert.equal(snapshot().content![0].type, "paragraph");
+  assert.equal(button("Redo").disabled, false);
+  button("Redo").click();
+  assert.equal(snapshot().content![0].attrs?.level, 6);
   dom.window.close();
 });

@@ -128,9 +128,13 @@ test("tag sheet creates a colored tag, selects several tags and retains choices 
       ),
     );
     await click("Meeting");
+    assert.equal(dom.window.document.querySelector("input"), null);
+    await click("＋ Create tag");
+    assert.ok(dom.window.document.querySelector("input"));
+    assert.ok(!dom.window.document.body.textContent!.includes("Save tags"));
     await act(async () => inputProps.onChangeText("Education"));
     await click("Purple tag color");
-    await click("Create tag");
+    await click("Create & select");
     assert.equal(
       definitions.find((t) => t.name === "Education")?.color,
       "#9870BC",
@@ -142,13 +146,13 @@ test("tag sheet creates a colored tag, selects several tags and retains choices 
       "true",
     );
     assert.deepEqual(assigned, []); // Creation does not silently save the draft assignment.
-    await click("Done");
+    await click("Save tags");
     assert.equal(closed, 0);
     assert.ok(
       dom.window.document.body.textContent!.includes("Tags could not be saved"),
     );
     failSave = false;
-    await click("Done");
+    await click("Save tags");
     assert.deepEqual(assigned, ["meeting", "education"]);
     assert.deepEqual(
       shown.map((t) => t.name),
@@ -211,6 +215,9 @@ test("holding a note opens actions, Add tags targets that note, and confirmed li
     "react-native": {
       View: wrapper,
       Image: () => null,
+      Platform: {
+        select: (options: any) => options.android ?? options.default,
+      },
       TextInput: () => null,
       Pressable: (props: any) => {
         if (props.onLongPress) rowProps = props;

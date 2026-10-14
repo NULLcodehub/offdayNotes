@@ -200,7 +200,7 @@ export default function Settings() {
             detail={permission}
             onPress={() =>
               void Linking.openSettings().catch(() =>
-                setError("Open your device settings and choose OFFDAY Note."),
+                setError("Open your device settings and choose Offday Note."),
               )
             }
           />
@@ -237,7 +237,7 @@ export default function Settings() {
           />
         </Section>
         <Section title="About">
-          <SettingRow title="OFFDAY Note" value="1.0.0" />
+          <SettingRow title="Offday Note" value="1.0.0" />
         </Section>
         <Message text={error} error />
       </ScrollView>

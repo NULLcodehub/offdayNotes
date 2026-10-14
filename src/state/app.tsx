@@ -1,3 +1,4 @@
+import { LaunchScreen } from "@/ui/launch-screen";
 import * as SplashScreen from "expo-splash-screen";
 import {
   createContext,
@@ -6,14 +7,7 @@ import {
   useState,
   type PropsWithChildren,
 } from "react";
-import {
-  ActivityIndicator,
-  Platform,
-  AppState,
-  Text,
-  View,
-  useColorScheme,
-} from "react-native";
+import { Platform, AppState, Text, View, useColorScheme } from "react-native";
 import { openRepository } from "@/data/open";
 import type { Repository } from "@/data/repository";
 import { ReminderService } from "@/data/reminders";
@@ -125,7 +119,8 @@ export function AppProvider({ children }: PropsWithChildren) {
     if (Platform.OS !== "web" && ((repo && reminders) || error))
       SplashScreen.hide();
   }, [repo, reminders, error]);
-  if (!repo || !reminders)
+  if (!repo || !reminders) {
+    if (!error) return <LaunchScreen />;
     return (
       <View
         style={{
@@ -137,27 +132,19 @@ export function AppProvider({ children }: PropsWithChildren) {
           gap: 20,
         }}
       >
-        {error ? (
-          <>
-            <Text>{error}</Text>
-            <Text
-              accessibilityRole="button"
-              onPress={() => {
-                setError("");
-                setAttempt((v) => v + 1);
-              }}
-            >
-              Try again
-            </Text>
-          </>
-        ) : (
-          <>
-            <ActivityIndicator color={palettes.light.accent} />
-            <Text>Opening your notebook…</Text>
-          </>
-        )}
+        <Text>{error}</Text>
+        <Text
+          accessibilityRole="button"
+          onPress={() => {
+            setError("");
+            setAttempt((value) => value + 1);
+          }}
+        >
+          Try again
+        </Text>
       </View>
     );
+  }
   return (
     <AppContext.Provider
       value={{

@@ -260,7 +260,7 @@ export default function ReminderScreen() {
                 label="Notification settings"
                 onPress={() =>
                   void Linking.openSettings().catch(() =>
-                    setError("Open device settings and select OFFDAY Note."),
+                    setError("Open device settings and select Offday Note."),
                   )
                 }
               />

@@ -1,6 +1,6 @@
 import { normalizeLink } from "../data/links";
 import { editorFonts } from "./fonts";
-import { Editor } from "@tiptap/core";
+import { Editor, getMarkRange } from "@tiptap/core";
 import { StarterKit } from "@tiptap/starter-kit";
 import { TaskList } from "@tiptap/extension-task-list";
 import { TaskItem } from "@tiptap/extension-task-item";
@@ -31,7 +31,7 @@ const editor = new Editor({
   element: document.getElementById("editor")!,
   extensions: [
     StarterKit.configure({
-      heading: { levels: [1, 2, 3] },
+      heading: { levels: [1, 2, 3, 4, 5, 6] },
       link: {
         openOnClick: false,
         autolink: false,
@@ -39,7 +39,10 @@ const editor = new Editor({
       },
     }),
     TaskList,
-    TaskItem.configure({ nested: false }),
+    TaskItem.configure({
+      nested: false,
+      HTMLAttributes: { "data-type": "taskItem" },
+    }),
     TableKit.configure({
       table: { resizable: false, allowTableNodeSelection: true },
     }),
@@ -55,9 +58,8 @@ const editor = new Editor({
   },
   onUpdate: ({ editor }) => {
     send({ type: "change", content: editor.getJSON() });
-    state();
   },
-  onSelectionUpdate: () => state(),
+  onTransaction: () => state(),
 });
 // Mobile keyboards can shrink the visual viewport without resizing the WebView.
 function resizeEditorViewport() {
@@ -77,18 +79,19 @@ const tools: [string, string, () => void, string?][] = [
   [
     "H",
     "Heading",
-    () =>
+    () => {
+      const current = editor.isActive("heading")
+        ? Number(editor.getAttributes("heading").level)
+        : 1;
       editor
         .chain()
         .focus()
-        .toggleHeading({
-          level: editor.isActive("heading", { level: 1 })
-            ? 2
-            : editor.isActive("heading", { level: 2 })
-              ? 3
-              : 1,
+        .setHeading({
+          level: (current > 1 ? current - 1 : 6) as 1 | 2 | 3 | 4 | 5 | 6,
         })
-        .run(),
+        .run();
+      document.getElementById("heading-levels")!.hidden = true;
+    },
     "heading",
   ],
   ["B", "Bold", () => editor.chain().focus().toggleBold().run(), "bold"],
@@ -143,13 +146,90 @@ function makeButton(
   b.addEventListener("pointerdown", (e) => {
     if (e.pointerType !== "mouse") e.preventDefault();
   });
-  b.onclick = run;
+  b.onclick = () => {
+    run();
+    state();
+  };
   parent.appendChild(b);
   return b;
 }
 buttons = tools.map(([label, title, run]) =>
   makeButton(label, title, run, document.getElementById("toolbar")!),
 );
+const headingControl = buttons[0];
+let headingHold: ReturnType<typeof setTimeout> | undefined;
+let heldHeading = false;
+let headingStart = { x: 0, y: 0 };
+function showHeadingChoices() {
+  document.getElementById("heading-levels")!.hidden = false;
+  state();
+}
+function cancelHeadingHold() {
+  clearTimeout(headingHold);
+}
+headingControl.addEventListener("pointerdown", (event) => {
+  heldHeading = false;
+  headingStart = { x: event.clientX, y: event.clientY };
+  headingHold = setTimeout(() => {
+    heldHeading = true;
+    showHeadingChoices();
+  }, 450);
+});
+headingControl.addEventListener("pointermove", (event) => {
+  if (
+    Math.abs(event.clientX - headingStart.x) > 10 ||
+    Math.abs(event.clientY - headingStart.y) > 10
+  )
+    cancelHeadingHold();
+});
+headingControl.addEventListener("pointerup", cancelHeadingHold);
+headingControl.addEventListener("pointercancel", cancelHeadingHold);
+headingControl.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+  showHeadingChoices();
+});
+headingControl.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    showHeadingChoices();
+  }
+});
+headingControl.setAttribute(
+  "aria-description",
+  "Tap to decrease heading level; hold to choose a level",
+);
+headingControl.onclick = () => {
+  if (heldHeading) {
+    heldHeading = false;
+    return;
+  }
+  tools[0][2]();
+  state();
+};
+const headings = document.getElementById("heading-levels")!;
+makeButton(
+  "Paragraph",
+  "Paragraph style",
+  () => {
+    editor.chain().focus().setParagraph().run();
+    headings.hidden = true;
+  },
+  headings,
+);
+for (const level of [1, 2, 3, 4, 5, 6] as const) {
+  const button = makeButton(
+    "H",
+    `Heading ${level}`,
+    () => {
+      editor.chain().focus().setHeading({ level }).run();
+      headings.hidden = true;
+    },
+    headings,
+  );
+  const suffix = document.createElement("sup");
+  suffix.textContent = String(level);
+  button.appendChild(suffix);
+}
 const more = document.getElementById("more")!;
 makeButton(
   "Paragraph",
@@ -170,8 +250,19 @@ makeButton(
   },
   more,
 );
-makeButton("Undo", "Undo", () => editor.chain().focus().undo().run(), more);
-makeButton("Redo", "Redo", () => editor.chain().focus().redo().run(), more);
+const history = document.getElementById("history")!;
+const undoButton = makeButton(
+  "↶",
+  "Undo",
+  () => editor.chain().focus().undo().run(),
+  history,
+);
+const redoButton = makeButton(
+  "↷",
+  "Redo",
+  () => editor.chain().focus().redo().run(),
+  history,
+);
 const table = document.getElementById("table-actions")!;
 makeButton(
   "+ Row",
@@ -210,11 +301,20 @@ makeButton(
   table,
 );
 let selection = { from: 0, to: 0 };
+let originalSelection = selection;
 function openLink() {
   selection = {
     from: editor.state.selection.from,
     to: editor.state.selection.to,
   };
+  originalSelection = selection;
+  if (selection.from === selection.to && editor.isActive("link")) {
+    const range = getMarkRange(
+      editor.state.selection.$from,
+      editor.schema.marks.link,
+    );
+    if (range) selection = range;
+  }
   const input = document.getElementById("link-url") as HTMLInputElement;
   input.value = editor.getAttributes("link").href || "";
   document.getElementById("link-error")!.textContent = "";
@@ -232,7 +332,20 @@ makeButton(
         "Enter a website, http://, https:// or mailto: address.";
       return;
     }
-    editor.chain().focus().setTextSelection(selection).setLink({ href }).run();
+    const chain = editor.chain().focus().setTextSelection(selection);
+    if (selection.from === selection.to) {
+      chain
+        .insertContent({
+          type: "text",
+          text: href,
+          marks: [{ type: "link", attrs: { href } }],
+        })
+        .command(({ tr }) => {
+          tr.removeStoredMark(editor.schema.marks.link);
+          return true;
+        })
+        .run();
+    } else chain.setLink({ href }).run();
     document.getElementById("link-dialog")!.hidden = true;
   },
   document.getElementById("link-buttons")!,
@@ -251,7 +364,7 @@ makeButton(
   "Cancel link",
   () => {
     document.getElementById("link-dialog")!.hidden = true;
-    editor.chain().focus().setTextSelection(selection).run();
+    editor.chain().focus().setTextSelection(originalSelection).run();
   },
   document.getElementById("link-buttons")!,
 );
@@ -261,6 +374,27 @@ function state() {
     const active = !!t[3] && editor.isActive(t[3]!);
     if (t[3]) buttons![i].setAttribute("aria-pressed", String(active));
   });
+  const level = editor.isActive("heading")
+    ? editor.getAttributes("heading").level
+    : null;
+  const headingButton = buttons[0];
+  headingButton.replaceChildren(document.createTextNode("H"));
+  if (level) {
+    const suffix = document.createElement("sup");
+    suffix.textContent = String(level);
+    headingButton.appendChild(suffix);
+  }
+  headingButton.setAttribute("aria-expanded", String(!headings.hidden));
+  for (const button of headings.querySelectorAll("button")) {
+    const expected =
+      button.getAttribute("aria-label") === "Paragraph style"
+        ? null
+        : Number(button.getAttribute("aria-label")?.split(" ")[1]);
+    button.setAttribute("aria-pressed", String(level === expected));
+  }
+  undoButton.disabled = !editor.can().undo();
+  redoButton.disabled = !editor.can().redo();
+  editor.view.dom.dataset.empty = String(editor.isEmpty);
   table.hidden = !editor.isActive("table");
 }
 (window as any).offdayCommand = (c: any) => {

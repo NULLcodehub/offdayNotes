@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
-import { FlatList, Image, Pressable, TextInput, View } from "react-native";
+import { FlatList, Platform, Pressable, TextInput, View } from "react-native";
 import * as Crypto from "expo-crypto";
 import { useApp } from "@/state/app";
 import {
@@ -173,24 +173,22 @@ export function NoteList({
     <Screen>
       {home && (
         <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 10,
-            paddingTop: 12,
-            paddingBottom: 2,
-          }}
-          accessible
-          accessibilityLabel="OFFDAY Note"
+          style={{ alignItems: "center", paddingTop: 18, paddingBottom: 10 }}
         >
-          <Image
-            source={require("../../assets/images/offday-icon.png")}
-            style={{ width: 28, height: 28, borderRadius: 6 }}
-          />
           <Label
-            style={{ fontSize: 13, fontWeight: "500", letterSpacing: 0.6 }}
+            style={{
+              fontSize: 23,
+              lineHeight: 30,
+              fontWeight: "300",
+              letterSpacing: 1.2,
+              fontFamily: Platform.select({
+                ios: "HelveticaNeue-Thin",
+                android: "sans-serif-thin",
+                default: "sans-serif",
+              }),
+            }}
           >
-            OFFDAY Note
+            Offday Note
           </Label>
         </View>
       )}
@@ -290,7 +288,12 @@ export function NoteList({
             }}
           >
             {home && !loading && !error ? (
-              newNoteButton
+              <View style={{ alignItems: "center", gap: 14 }}>
+                <Label muted style={{ fontSize: 14, letterSpacing: 0.2 }}>
+                  Your first note
+                </Label>
+                {newNoteButton}
+              </View>
             ) : (
               <>
                 <Label muted style={{ fontSize: 16, textAlign: "center" }}>
@@ -364,7 +367,7 @@ export function NoteList({
                   }
                   style={({ pressed }) => ({
                     paddingVertical:
-                      preferences.spacing === "compact" ? 14 : 23,
+                      preferences.spacing === "compact" ? 12 : 18,
                     borderBottomWidth: 0.5,
                     borderColor: colors.line,
                     opacity: pressed ? 0.6 : 1,
@@ -377,8 +380,23 @@ export function NoteList({
                       gap: 12,
                     }}
                   >
-                    <Label style={{ fontSize: 20, fontWeight: "500", flex: 1 }}>
+                    <Label
+                      numberOfLines={1}
+                      style={{
+                        fontSize: 18,
+                        lineHeight: 24,
+                        fontWeight: "500",
+                        flex: 1,
+                        minWidth: 0,
+                      }}
+                    >
                       {displayTitle(n)}
+                    </Label>
+                    <Label muted style={{ fontSize: 11, lineHeight: 24 }}>
+                      {new Date(n.updatedAt).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                      })}
                     </Label>
                     {n.pinned && (
                       <Label muted style={{ fontSize: 12 }}>
@@ -388,29 +406,28 @@ export function NoteList({
                   </View>
                   <Label
                     muted
-                    style={{ marginTop: 8, lineHeight: 23, fontSize: 14 }}
+                    numberOfLines={2}
+                    style={{ marginTop: 6, lineHeight: 20, fontSize: 14 }}
                   >
                     {plainText(n.content).replace(/\s+/g, " ").slice(0, 135) ||
                       "An unwritten page."}
                   </Label>
                   {(tagsByNote[n.id]?.length ?? 0) > 0 && (
-                    <View style={{ marginTop: 12 }}>
+                    <View style={{ marginTop: 8 }}>
                       <TagChips tags={tagsByNote[n.id]} />
                     </View>
                   )}
-                  <Label muted style={{ marginTop: 12, fontSize: 11 }}>
-                    {new Date(n.updatedAt).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                    })}
-                    {reminder
-                      ? "  ·  " +
-                        (reminder.status === "scheduled"
-                          ? "Reminder " +
-                            new Date(reminder.scheduledAt).toLocaleString()
-                          : "Reminder needs scheduling")
-                      : ""}
-                  </Label>
+                  {reminder && (
+                    <Label
+                      muted
+                      numberOfLines={1}
+                      style={{ marginTop: 8, fontSize: 11 }}
+                    >
+                      {reminder.status === "scheduled"
+                        ? "◷ " + new Date(reminder.scheduledAt).toLocaleString()
+                        : "◷ Needs scheduling"}
+                    </Label>
+                  )}
                 </Pressable>
               </SwipeNote>
             </View>
