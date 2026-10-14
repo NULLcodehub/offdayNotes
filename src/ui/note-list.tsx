@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
-import { FlatList, Pressable, TextInput, View } from "react-native";
+import { FlatList, Image, Pressable, TextInput, View } from "react-native";
 import * as Crypto from "expo-crypto";
 import { useApp } from "@/state/app";
 import {
@@ -9,9 +9,19 @@ import {
   plainText,
   type Note,
   type Reminder,
+  type Tag,
 } from "@/data/model";
+import { TagChips, TagSheet } from "./tags";
 import { SwipeNote } from "./swipe-note";
-import { goBack, Button, Header, Label, Message, Screen } from "./common";
+import {
+  goBack,
+  Button,
+  Header,
+  Label,
+  Message,
+  Screen,
+  Sheet,
+} from "./common";
 export function NoteList({
   archived = false,
   search = false,
@@ -19,7 +29,19 @@ export function NoteList({
   archived?: boolean;
   search?: boolean;
 }) {
-  const { repo, colors, preferences, revision, recovery, refresh } = useApp();
+  const {
+    repo,
+    colors,
+    preferences,
+    revision,
+    recovery,
+    refresh,
+    reminders: reminderService,
+  } = useApp();
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null);
+  const [tagNote, setTagNote] = useState<Note | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Note | null>(null);
+  const [tagsByNote, setTagsByNote] = useState<Record<string, Tag[]>>({});
   const [notes, setNotes] = useState<Note[]>([]);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
@@ -32,9 +54,16 @@ export function NoteList({
       void revision;
       const timer = setTimeout(
         () => {
-          void Promise.all([repo.list(archived, query), repo.reminders()])
-            .then(([n, r]) => {
+          void Promise.all([
+            repo.list(archived, query),
+            repo.reminders(),
+            repo.noteTags(),
+          ])
+            .then(([n, r, links]) => {
               if (active) {
+                const grouped: Record<string, Tag[]> = Object.create(null);
+                for (const tag of links) (grouped[tag.noteId] ??= []).push(tag);
+                setTagsByNote(grouped);
                 setNotes(n);
                 setReminders(r);
                 setLoading(false);
@@ -80,6 +109,36 @@ export function NoteList({
       setBusy(false);
     }
   }
+  async function flag(note: Note, key: "pinned" | "archived") {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await repo.flag(note.id, key, !note[key]);
+      setSelectedNote(null);
+      refresh();
+    } catch {
+      setError("The note could not be updated. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remove() {
+    if (!deleteTarget || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await reminderService.cancel(deleteTarget.id);
+      await repo.delete(deleteTarget.id);
+      setNotes((items) => items.filter((note) => note.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      refresh();
+    } catch {
+      setError("The note could not be deleted. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
   const home = !archived && !search;
   const hasPinned = notes.some((note) => note.pinned);
   const newNoteButton = (
@@ -112,6 +171,29 @@ export function NoteList({
   );
   return (
     <Screen>
+      {home && (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
+            paddingTop: 12,
+            paddingBottom: 2,
+          }}
+          accessible
+          accessibilityLabel="OFFDAY Note"
+        >
+          <Image
+            source={require("../../assets/images/offday-icon.png")}
+            style={{ width: 28, height: 28, borderRadius: 6 }}
+          />
+          <Label
+            style={{ fontSize: 13, fontWeight: "500", letterSpacing: 0.6 }}
+          >
+            OFFDAY Note
+          </Label>
+        </View>
+      )}
       {home ? (
         <View
           style={{
@@ -260,20 +342,20 @@ export function NoteList({
               )}
               <SwipeNote
                 note={n}
-                onAction={async (key) => {
-                  try {
-                    await repo.flag(n.id, key, !n[key]);
-                    refresh();
-                  } catch {
-                    setError(
-                      "The note could not be updated. Please try again.",
-                    );
-                  }
+                onOptions={() => {
+                  setError("");
+                  setSelectedNote(n);
                 }}
+                onAction={(key) => flag(n, key)}
               >
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={"Open " + displayTitle(n)}
+                  accessibilityHint="Hold for note actions"
+                  onLongPress={() => {
+                    setError("");
+                    setSelectedNote(n);
+                  }}
                   onPress={() =>
                     router.push({
                       pathname: "/note/[id]",
@@ -311,6 +393,11 @@ export function NoteList({
                     {plainText(n.content).replace(/\s+/g, " ").slice(0, 135) ||
                       "An unwritten page."}
                   </Label>
+                  {(tagsByNote[n.id]?.length ?? 0) > 0 && (
+                    <View style={{ marginTop: 12 }}>
+                      <TagChips tags={tagsByNote[n.id]} />
+                    </View>
+                  )}
                   <Label muted style={{ marginTop: 12, fontSize: 11 }}>
                     {new Date(n.updatedAt).toLocaleDateString(undefined, {
                       month: "short",
@@ -335,6 +422,92 @@ export function NoteList({
           {newNoteButton}
         </View>
       )}
+      <Sheet
+        visible={selectedNote !== null}
+        close={() => {
+          if (!busy) setSelectedNote(null);
+        }}
+        title="Note actions"
+      >
+        {selectedNote && (
+          <>
+            <Button
+              label="Open note"
+              disabled={busy}
+              onPress={() => {
+                const id = selectedNote.id;
+                setSelectedNote(null);
+                router.push({ pathname: "/note/[id]", params: { id } });
+              }}
+            />
+            <Button
+              label="Add tags"
+              disabled={busy}
+              onPress={() => {
+                setTagNote(selectedNote);
+                setSelectedNote(null);
+              }}
+            />
+            <Button
+              label="Set or edit reminder"
+              disabled={busy}
+              onPress={() => {
+                const id = selectedNote.id;
+                setSelectedNote(null);
+                router.push({ pathname: "/reminder", params: { id } });
+              }}
+            />
+            <Button
+              label={selectedNote.pinned ? "Unpin note" : "Pin note"}
+              disabled={busy}
+              onPress={() => void flag(selectedNote, "pinned")}
+            />
+            <Button
+              label={
+                selectedNote.archived ? "Restore from archive" : "Archive note"
+              }
+              disabled={busy}
+              onPress={() => void flag(selectedNote, "archived")}
+            />
+            <Button
+              label="Delete note"
+              danger
+              disabled={busy}
+              onPress={() => {
+                setDeleteTarget(selectedNote);
+                setSelectedNote(null);
+              }}
+            />
+          </>
+        )}
+        <Message text={error} error />
+      </Sheet>
+      {tagNote && (
+        <TagSheet noteId={tagNote.id} close={() => setTagNote(null)} />
+      )}
+      <Sheet
+        visible={deleteTarget !== null}
+        close={() => {
+          if (!busy) setDeleteTarget(null);
+        }}
+        title="Delete this note?"
+      >
+        <Label muted style={{ paddingVertical: 16, lineHeight: 24 }}>
+          This permanently removes the note and cancels its reminder.
+        </Label>
+        <Button
+          label="Keep note"
+          disabled={busy}
+          onPress={() => setDeleteTarget(null)}
+        />
+        <Button
+          label="Delete note permanently"
+          danger
+          disabled={busy}
+          onPress={() => void remove()}
+        />
+        <Message text={error} error />
+      </Sheet>
     </Screen>
   );
 }

@@ -109,7 +109,7 @@ function note(id = "n1", content = structured): Note {
 test("migration, create, edit, pin, archive, restore, delete and empty states", async () => {
   const { db, repo } = await setup();
   await repo.initialize();
-  assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 1);
+  assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 2);
   assert.deepEqual(await repo.list(), []);
   await repo.create(note());
   await repo.save("n1", "A title", structured);
@@ -240,7 +240,7 @@ test("invalid backups are rejected without changing existing notes", async () =>
   for (const raw of [
     "invalid",
     "{}",
-    JSON.stringify({ ...before, version: 2 }),
+    JSON.stringify({ ...before, version: 99 }),
     JSON.stringify({ ...before, notes: [note(), note()] }),
     JSON.stringify({
       ...before,
@@ -579,5 +579,169 @@ test("Black and every editor font persist without changing the existing Olive pr
     font: "serif",
   });
   assert.equal((await new Repository(adapter(db)).preferences()).theme, "dark");
+  db.close();
+});
+
+test("discarding autosave cancels queued edits and ignores late editor messages after deletion", async () => {
+  const { db, repo } = await setup();
+  await repo.create(note());
+  const statuses: string[] = [];
+  let writes = 0;
+  const saver = new Autosave<DocNode>(
+    async (doc) => {
+      writes++;
+      await repo.save("n1", "", doc);
+    },
+    (s) => statuses.push(s),
+    5,
+  );
+  saver.change(structured);
+  await repo.delete("n1");
+  saver.discard();
+  saver.change(structured);
+  await saver.flush();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(writes, 0);
+  assert.equal(await repo.get("n1"), null);
+  assert.deepEqual(await repo.list(), []);
+  assert.deepEqual(await repo.list(false, "Weekend"), []);
+  assert.deepEqual(statuses, ["saving"]);
+  db.close();
+});
+
+test("tag migration preserves version-one notes, reminders and preferences", async () => {
+  const db = new DatabaseSync(":memory:");
+  const { migration } = await import("../src/data/repository");
+  db.exec(migration);
+  const old = new Repository(adapter(db));
+  await old.create(note());
+  await old.setPreferences({
+    theme: "black",
+    spacing: "compact",
+    font: "mono",
+  });
+  await old.setReminder({
+    noteId: "n1",
+    scheduledAt: 100,
+    status: "completed",
+    notificationId: null,
+  });
+  const upgraded = new Repository(adapter(db));
+  await upgraded.initialize();
+  await upgraded.initialize();
+  assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 2);
+  assert.deepEqual((await upgraded.get("n1"))?.content, structured);
+  assert.equal((await upgraded.preferences()).theme, "black");
+  assert.equal((await upgraded.reminders())[0].status, "completed");
+  assert.deepEqual(await upgraded.tags(), []);
+  db.close();
+});
+
+test("colored tags persist, deduplicate names, assign multiple tags and roll back invalid assignment", async () => {
+  const { db, repo } = await setup();
+  await repo.create(note());
+  const education = await repo.createTag({
+    id: "education",
+    name: "  Education  ",
+    color: "#648A5A",
+  });
+  const meeting = await repo.createTag({
+    id: "meeting",
+    name: "Meeting",
+    color: "#4E83C8",
+  });
+  assert.deepEqual(
+    await repo.createTag({
+      id: "duplicate",
+      name: "education",
+      color: "#CD7288",
+    }),
+    education,
+  );
+  assert.equal((await repo.tags()).length, 2);
+  await repo.setNoteTags("n1", [meeting.id, education.id, meeting.id]);
+  const reopened = new Repository(adapter(db));
+  assert.deepEqual(await reopened.tags("n1"), [education, meeting]);
+  await assert.rejects(repo.setNoteTags("n1", ["education", "missing"]));
+  assert.deepEqual(await repo.tags("n1"), [education, meeting]);
+  await assert.rejects(repo.setNoteTags("missing-note", [education.id]));
+  await repo.flag("n1", "archived", true);
+  assert.deepEqual(await repo.tags("n1"), [education, meeting]);
+  await repo.setNoteTags("n1", [meeting.id]);
+  assert.deepEqual(await repo.tags("n1"), [meeting]);
+  for (const invalid of [
+    { id: "x", name: " ", color: "#648A5A" },
+    { id: "x", name: "x".repeat(41), color: "#648A5A" },
+    { id: "x", name: "Okay", color: "red" },
+  ])
+    assert.throws(() => repo.createTag(invalid));
+  await repo.delete("n1");
+  assert.deepEqual(await repo.noteTags(), []);
+  assert.equal((await repo.tags()).length, 2); // Reusable tags survive note deletion.
+  db.close();
+});
+
+test("tagged backups restore colors, merge names safely, remap ID collisions and skip existing note assignments", async () => {
+  const a = await setup(),
+    b = await setup();
+  await a.repo.create(note());
+  await a.repo.createTag({
+    id: "same-id",
+    name: "Education",
+    color: "#648A5A",
+  });
+  await a.repo.createTag({ id: "meeting", name: "Meeting", color: "#4E83C8" });
+  await a.repo.setNoteTags("n1", ["same-id", "meeting"]);
+  const backup = parseBackup(JSON.stringify(await a.repo.export()));
+  assert.equal(backup.version, 2);
+  await b.repo.createTag({
+    id: "local-edu",
+    name: "education",
+    color: "#CD7288",
+  });
+  await b.repo.createTag({ id: "meeting", name: "Private", color: "#B58A38" });
+  await b.repo.import(backup);
+  const assigned = await b.repo.tags("n1");
+  assert.equal(assigned.length, 2);
+  assert.equal(assigned.find((t) => t.name === "education")?.color, "#CD7288");
+  assert.equal(assigned.find((t) => t.name === "Meeting")?.color, "#4E83C8");
+  assert.notEqual(assigned.find((t) => t.name === "Meeting")?.id, "meeting");
+  await b.repo.setNoteTags("n1", []);
+  await b.repo.import(backup);
+  assert.deepEqual(await b.repo.tags("n1"), []);
+  const legacy = { ...backup, version: 1 as const };
+  delete legacy.tags;
+  delete legacy.noteTags;
+  assert.equal(parseBackup(JSON.stringify(legacy)).version, 1);
+  for (const invalid of [
+    { ...backup, tags: [{ ...backup.tags![0], color: "not-a-color" }] },
+    { ...backup, tags: [backup.tags![0], backup.tags![0]] },
+    { ...backup, noteTags: [{ noteId: "missing", tagId: "same-id" }] },
+    { ...backup, noteTags: [backup.noteTags![0], backup.noteTags![0]] },
+    { ...backup, tags: undefined },
+  ])
+    assert.throws(() => parseBackup(JSON.stringify(invalid)));
+  a.db.close();
+  b.db.close();
+});
+
+test("tag import failure rolls back tag definitions and notes together", async () => {
+  const { db, repo } = await setup();
+  db.exec(
+    "CREATE TRIGGER reject_import BEFORE INSERT ON note_tags BEGIN SELECT RAISE(ABORT,'disk full'); END;",
+  );
+  await assert.rejects(
+    repo.import({
+      format: "offday-note",
+      version: 2,
+      exportedAt: 0,
+      notes: [note()],
+      reminders: [],
+      tags: [{ id: "tag", name: "Meeting", color: "#4E83C8" }],
+      noteTags: [{ noteId: "n1", tagId: "tag" }],
+    }),
+  );
+  assert.deepEqual(await repo.tags(), []);
+  assert.deepEqual(await repo.list(), []);
   db.close();
 });

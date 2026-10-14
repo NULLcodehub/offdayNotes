@@ -2,6 +2,9 @@ import {
   defaultPreferences,
   plainText,
   validateDoc,
+  validateTag,
+  type Tag,
+  type NoteTag,
   type Backup,
   type DocNode,
   type Note,
@@ -33,6 +36,11 @@ CREATE TRIGGER notes_au AFTER UPDATE ON notes BEGIN INSERT INTO notes_fts(notes_
 CREATE TABLE reminders (note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE, scheduled_at INTEGER NOT NULL, status TEXT NOT NULL, notification_id TEXT);
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 PRAGMA user_version = 1;`;
+export const tagMigration = `
+CREATE TABLE tags (id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE, color TEXT NOT NULL);
+CREATE TABLE note_tags (note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE, tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE, PRIMARY KEY(note_id, tag_id));
+CREATE INDEX note_tags_tag ON note_tags(tag_id, note_id);
+PRAGMA user_version = 2;`;
 type Row = {
   id: string;
   title: string;
@@ -85,21 +93,23 @@ export class Repository {
       const v = await this.db.getFirstAsync<{ user_version: number }>(
         "PRAGMA user_version",
       );
-      if ((v?.user_version ?? 0) > 1)
+      if ((v?.user_version ?? 0) > 2)
         throw new Error(
           "This database requires a newer version of OFFDAY Note.",
         );
-      if (!v?.user_version)
-        await this.transaction(() =>
-          this.db.execAsync(
-            this.useFTS
-              ? migration
-              : migration.replace(
-                  /CREATE VIRTUAL TABLE[\s\S]*?(?=CREATE TABLE reminders)/,
-                  "",
-                ),
-          ),
-        );
+      if ((v?.user_version ?? 0) < 2)
+        await this.transaction(async () => {
+          if (!v?.user_version)
+            await this.db.execAsync(
+              this.useFTS
+                ? migration
+                : migration.replace(
+                    /CREATE VIRTUAL TABLE[\s\S]*?(?=CREATE TABLE reminders)/,
+                    "",
+                  ),
+            );
+          await this.db.execAsync(tagMigration);
+        });
     });
   }
   list(archived = false, query = "") {
@@ -191,6 +201,67 @@ export class Repository {
       this.transaction(() => this.db.execAsync("DELETE FROM notes;")),
     );
   }
+  tags(noteId?: string) {
+    return this.serialize(async () => {
+      const tags =
+        noteId === undefined
+          ? await this.db.getAllAsync<Tag>(
+              "SELECT * FROM tags ORDER BY name COLLATE NOCASE",
+            )
+          : await this.db.getAllAsync<Tag>(
+              "SELECT t.* FROM tags t JOIN note_tags nt ON nt.tag_id=t.id WHERE nt.note_id=? ORDER BY t.name COLLATE NOCASE",
+              noteId,
+            );
+      return tags.map((tag) => ({ ...tag }));
+    });
+  }
+  noteTags() {
+    return this.serialize(() =>
+      this.db.getAllAsync<Tag & { noteId: string }>(
+        "SELECT t.*, nt.note_id AS noteId FROM tags t JOIN note_tags nt ON nt.tag_id=t.id ORDER BY t.name COLLATE NOCASE",
+      ),
+    );
+  }
+  createTag(tag: Tag) {
+    validateTag(tag);
+    return this.serialize(async () => {
+      const name = tag.name.trim().replace(/\s+/g, " ");
+      const existing = await this.db.getFirstAsync<Tag>(
+        "SELECT * FROM tags WHERE name=? COLLATE NOCASE",
+        name,
+      );
+      if (existing) return { ...existing };
+      await this.db.runAsync(
+        "INSERT INTO tags VALUES(?,?,?)",
+        tag.id,
+        name,
+        tag.color,
+      );
+      return { ...tag, name };
+    });
+  }
+  setNoteTags(noteId: string, tagIds: string[]) {
+    const ids = [...new Set(tagIds)];
+    if (ids.length > 100) throw new Error("A note can have up to 100 tags.");
+    return this.serialize(() =>
+      this.transaction(async () => {
+        if (
+          !(await this.db.getFirstAsync(
+            "SELECT id FROM notes WHERE id=?",
+            noteId,
+          ))
+        )
+          throw new Error("This note is no longer available.");
+        await this.db.runAsync("DELETE FROM note_tags WHERE note_id=?", noteId);
+        for (const id of ids)
+          await this.db.runAsync(
+            "INSERT INTO note_tags VALUES(?,?)",
+            noteId,
+            id,
+          );
+      }),
+    );
+  }
   preferences() {
     return this.serialize(async () => {
       const row = await this.db.getFirstAsync<{ value: string }>(
@@ -247,13 +318,19 @@ export class Repository {
         async () =>
           ({
             format: "offday-note",
-            version: 1,
+            version: 2,
             exportedAt: Date.now(),
             notes: (
               await this.db.getAllAsync<Row>(
                 "SELECT * FROM notes ORDER BY created_at",
               )
             ).map(decode),
+            tags: await this.db.getAllAsync<Tag>(
+              "SELECT * FROM tags ORDER BY name COLLATE NOCASE",
+            ),
+            noteTags: await this.db.getAllAsync<NoteTag>(
+              "SELECT note_id AS noteId, tag_id AS tagId FROM note_tags ORDER BY note_id,tag_id",
+            ),
             reminders: await this.db.getAllAsync<Reminder>(
               "SELECT note_id AS noteId,scheduled_at AS scheduledAt,status,notification_id AS notificationId FROM reminders",
             ),
@@ -264,6 +341,40 @@ export class Repository {
   import(b: Backup) {
     return this.serialize(() =>
       this.transaction(async () => {
+        const tagMap = new Map<string, string>();
+        for (const [index, tag] of (b.tags ?? []).entries()) {
+          validateTag(tag);
+          const name = tag.name.trim().replace(/\s+/g, " ");
+          const existing = await this.db.getFirstAsync<Tag>(
+            "SELECT * FROM tags WHERE name=? COLLATE NOCASE",
+            name,
+          );
+          if (existing) {
+            tagMap.set(tag.id, existing.id);
+            continue;
+          }
+          let id = tag.id;
+          let attempt = 0;
+          while (
+            await this.db.getFirstAsync("SELECT id FROM tags WHERE id=?", id)
+          )
+            id = `restored-${Date.now()}-${index}-${++attempt}`;
+          await this.db.runAsync(
+            "INSERT INTO tags VALUES(?,?,?)",
+            id,
+            name,
+            tag.color,
+          );
+          tagMap.set(tag.id, id);
+        }
+        const linksByNote = new Map<string, string[]>();
+        for (const link of b.noteTags ?? []) {
+          const tagId = tagMap.get(link.tagId);
+          if (!tagId) throw new Error("Invalid note tag.");
+          const ids = linksByNote.get(link.noteId) ?? [];
+          ids.push(tagId);
+          linksByNote.set(link.noteId, ids);
+        }
         let imported = 0;
         for (const n of b.notes) {
           if (
@@ -272,6 +383,12 @@ export class Repository {
             continue;
           await this.insert(n);
           imported++;
+          for (const tagId of linksByNote.get(n.id) ?? [])
+            await this.db.runAsync(
+              "INSERT OR IGNORE INTO note_tags VALUES(?,?)",
+              n.id,
+              tagId,
+            );
           const r = b.reminders.find((r) => r.noteId === n.id);
           if (r)
             await this.db.runAsync(

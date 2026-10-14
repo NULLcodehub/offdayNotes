@@ -37,7 +37,7 @@ export default function BackupScreen() {
         <Label style={{ fontSize: 30 }}>Your words. Yours to keep.</Label>
         <Label muted style={{ lineHeight: 25 }}>
           Save a complete copy of your notebook: formatting, checklists, tables,
-          dates, pins, archive state and reminder metadata.
+          dates, pins, tags and colors, archive state and reminder metadata.
         </Label>
         <Button
           primary

@@ -2,6 +2,8 @@ import { router } from "expo-router";
 import { useState, type PropsWithChildren } from "react";
 import {
   Modal,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -173,7 +175,8 @@ export function Sheet({
       animationType="none"
       onRequestClose={close}
     >
-      <View
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{
           flex: 1,
           justifyContent: "flex-end",
@@ -214,7 +217,7 @@ export function Sheet({
             {children}
           </ScrollView>
         </SafeAreaView>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

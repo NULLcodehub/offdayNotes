@@ -51,7 +51,7 @@ Expo's generated local release uses the debug signing key for testing. Configure
 
 ## Architecture
 
-- `src/data/repository.ts`: independent data-access layer, transactions, foreign keys, migration `user_version=1`, indexes, native FTS5 and a serialized operation queue.
+- `src/data/repository.ts`: independent data-access layer, transactions, foreign keys, transactional migrations to `user_version=2`, indexes, native FTS5 and a serialized operation queue.
 - `src/data/model.ts`: structured content, plain-text extraction, title derivation and import validation with size/depth/count limits.
 - `src/data/autosave.ts`: 350ms debounce, serialized in-flight writes, latest-revision handling and retained dirty state on failure.
 - `src/data/reminders.ts`: testable notification service. Pending records are written before OS scheduling; unique identifiers distinguish old and new schedules across interruptions. Launch/foreground reconciliation detects expired, missing and orphan schedules.
@@ -94,3 +94,7 @@ Native build and verification results are recorded in [verification notes](docs/
 ### Latest design update
 
 White, Olive and Black themes; hidden scrollbars; direct Settings access beside search; swipe right to pin and left to archive/restore; compact save-status icons; simplified reminders; HTTP/HTTPS and bare-domain links; and System, Sans, Serif, Book and Monospace editor font choices. Fonts use offline platform fallbacks. The ON app icon is retained. See [run instructions](docs/RUN.md) for the commands to build locally; this revision was source-checked without building or committing the app.
+
+### Colored tags and note actions
+
+Hold a note to open actions for tags, reminders, pinning, archive/restore and confirmed deletion. Choose Add tags to select multiple tags or create a name and choose one of six colors. Tap Tags below the title while writing a new or existing note for the same sheet. Tap Done to save assignments. Small colored chips appear in the editor and note list. Tags persist offline and are included in version 2 backups; version 1 backups remain supported.

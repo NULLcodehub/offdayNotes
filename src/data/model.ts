@@ -18,6 +18,23 @@ export type Note = {
   pinned: boolean;
   archived: boolean;
 };
+export type Tag = { id: string; name: string; color: string };
+export type NoteTag = { noteId: string; tagId: string };
+export function validateTag(tag: Tag) {
+  if (
+    !tag ||
+    typeof tag.id !== "string" ||
+    !tag.id ||
+    tag.id.length > 200 ||
+    typeof tag.name !== "string" ||
+    !tag.name.trim() ||
+    tag.name.trim().length > 40 ||
+    /[\u0000-\u001f\u007f]/.test(tag.name) ||
+    typeof tag.color !== "string" ||
+    !/^#[\da-f]{6}$/i.test(tag.color)
+  )
+    throw new Error("Use a tag name of 1–40 characters and a valid color.");
+}
 export type Reminder = {
   noteId: string;
   scheduledAt: number;
@@ -215,10 +232,12 @@ export function validateDoc(
 }
 export type Backup = {
   format: "offday-note";
-  version: 1;
+  version: 1 | 2;
   exportedAt: number;
   notes: Note[];
   reminders: Reminder[];
+  tags?: Tag[];
+  noteTags?: NoteTag[];
 };
 export function parseBackup(raw: string): Backup {
   if (raw.length > 25000000) throw new Error("Backup exceeds the 25 MB limit.");
@@ -231,7 +250,7 @@ export function parseBackup(raw: string): Backup {
   if (
     !b ||
     b.format !== "offday-note" ||
-    b.version !== 1 ||
+    ![1, 2].includes(b.version) ||
     !Number.isSafeInteger(b.exportedAt) ||
     b.exportedAt < 0 ||
     !Array.isArray(b.notes) ||
@@ -283,6 +302,40 @@ export function parseBackup(raw: string): Backup {
     )
       throw new Error("Invalid reminder record.");
     reminderIds.add(r.noteId);
+  }
+  if (b.version === 2 || b.tags !== undefined || b.noteTags !== undefined) {
+    if (
+      !Array.isArray(b.tags) ||
+      !Array.isArray(b.noteTags) ||
+      b.tags.length > 2000 ||
+      b.noteTags.length > 200000
+    )
+      throw new Error("Invalid tag records.");
+    const tagIds = new Set<string>();
+    const names = new Set<string>();
+    for (const tag of b.tags) {
+      validateTag(tag);
+      const name = tag.name
+        .trim()
+        .replace(/\s+/g, " ")
+        .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+      if (tagIds.has(tag.id) || names.has(name))
+        throw new Error("Duplicate tag records.");
+      tagIds.add(tag.id);
+      names.add(name);
+    }
+    const links = new Set<string>();
+    const counts = new Map<string, number>();
+    for (const link of b.noteTags) {
+      if (!link || !ids.has(link.noteId) || !tagIds.has(link.tagId))
+        throw new Error("Invalid note tag.");
+      const key = JSON.stringify([link.noteId, link.tagId]);
+      const count = (counts.get(link.noteId) ?? 0) + 1;
+      if (links.has(key) || count > 100)
+        throw new Error("Duplicate or excessive note tags.");
+      links.add(key);
+      counts.set(link.noteId, count);
+    }
   }
   return b;
 }

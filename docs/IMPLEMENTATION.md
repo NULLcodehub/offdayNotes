@@ -1,6 +1,6 @@
 # OFFDAY Note implementation
 
-Preserve Expo 57, React Native 0.86 and Expo Router. Use native SQLite with WAL, foreign keys, FTS5 and transactional migration version 1. UI operations use a serialized repository; structured content is Tiptap JSON. All timestamps are UTC epoch milliseconds.
+Preserve Expo 57, React Native 0.86 and Expo Router. Use native SQLite with WAL, foreign keys, FTS5 and transactional migrations through version 2. UI operations use a serialized repository; structured content is Tiptap JSON. All timestamps are UTC epoch milliseconds.
 
 Editor evaluation: Pell uses HTML and lacks a complete table editing model. TenTap uses Tiptap inside WebView and supports custom extensions, but tables require a custom web build anyway. Use maintained Tiptap directly, with StarterKit, task lists and TableKit, bundled by esbuild into a local inline WebView document. Tiptap/ProseMirror owns selection, input rules, history, table navigation and structure; this app only supplies a command bridge and mobile toolbar. No CDN or remote resources. Device keyboard/cursor behavior must still be verified on Android and iOS.
 
@@ -13,3 +13,5 @@ Reminders use deterministic OS identifiers and a pending SQLite record before sc
 No backend, sync, analytics, images or attachments. Release Android blocks INTERNET and disables Android backup; iOS disables file sharing. Development Metro requires internet permission; use a release build to verify offline behavior. SQLite is not encrypted; device security protects local storage. User-generated backup JSON is plaintext.
 
 Browser verification found two Expo web limitations: Metro 57 development worker serialization fails, and the shipped SQLite WASM does not include FTS5. `npm run web` therefore serves a production export with COOP/COEP headers, and the browser repository uses escaped SQLite LIKE queries. Native Android/iOS retain indexed FTS5. Browser reminders explicitly require the mobile app; no fake browser scheduling.
+
+Tags use a separate definitions table and a note/tag join table with cascading foreign keys. Migration 2 preserves migration 1 notes, reminders and preferences. Tag names are trimmed and whitespace-normalized; SQLite NOCASE uniqueness reuses existing names. Assignments are replaced atomically, independently of rich-text autosave. Backup v2 contains tags and note-tag links; imports merge matching names while preserving local colors, remap ID collisions and only assign tags to newly imported notes. Long-press and screen-reader actions open a note actions sheet. The shared sheet follows keyboard resizing for tag creation.

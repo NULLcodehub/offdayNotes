@@ -15,9 +15,11 @@ import { isNoteSwipe, noteSwipeAction } from "./swipe-gesture";
 export function SwipeNote({
   note,
   onAction,
+  onOptions,
   children,
 }: PropsWithChildren<{
   note: Note;
+  onOptions: () => void;
   onAction: (key: "pinned" | "archived") => Promise<void>;
 }>) {
   const { colors } = useApp();
@@ -70,9 +72,10 @@ export function SwipeNote({
       accessible
       accessibilityRole="button"
       accessibilityLabel={displayTitle(note)}
-      accessibilityHint="Swipe right to pin, left to archive or restore"
+      accessibilityHint="Hold for note actions. Swipe right to pin, left to archive or restore"
       accessibilityActions={[
         { name: "activate", label: "Open note" },
+        { name: "options", label: "More note actions" },
         { name: "pin", label: note.pinned ? "Unpin" : "Pin" },
         { name: "archive", label: note.archived ? "Restore" : "Archive" },
       ]}
@@ -80,6 +83,7 @@ export function SwipeNote({
         const action = e.nativeEvent.actionName;
         if (action === "activate")
           router.push({ pathname: "/note/[id]", params: { id: note.id } });
+        else if (action === "options") onOptions();
         else if (action === "pin" || action === "archive")
           void act(action === "pin" ? "pinned" : "archived");
       }}

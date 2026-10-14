@@ -6,12 +6,14 @@ import {
   AppState,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   TextInput,
   View,
 } from "react-native";
 import { useApp } from "@/state/app";
 import { Autosave } from "@/data/autosave";
-import type { DocNode, Note } from "@/data/model";
+import type { DocNode, Note, Tag } from "@/data/model";
+import { TagChips, TagSheet } from "@/ui/tags";
 import { Canvas } from "@/editor/canvas";
 import type { EditorHandle } from "@/editor/bridge";
 import {
@@ -28,6 +30,8 @@ export default function NoteEditor() {
   const insets = useSafeAreaInsets();
   const { id, fresh } = useLocalSearchParams<{ id: string; fresh?: string }>();
   const { repo, reminders, colors, preferences, refresh } = useApp();
+  const [tagPicker, setTagPicker] = useState(false);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [note, setNote] = useState<Note | null>(null);
   const [status, setStatus] = useState<"saving" | "saved" | "error">("saved");
   const [error, setError] = useState("");
@@ -73,9 +77,9 @@ export default function NoteEditor() {
   useFocusEffect(
     useCallback(() => {
       setLeaving(false);
-      void repo
-        .reminders()
-        .then((rs) => {
+      void Promise.all([repo.reminders(), repo.tags(id)])
+        .then(([rs, assigned]) => {
+          setTags(assigned);
           const r = rs.find((r) => r.noteId === id);
           setReminderLabel(
             r?.status === "scheduled"
@@ -168,14 +172,30 @@ export default function NoteEditor() {
   function deleteNote() {
     setConfirmDelete(true);
   }
-  function confirmDeletion() {
-    void action(async () => {
+  async function confirmDeletion() {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      // Deleting intentionally discards edits; an unavailable editor must not block it.
       await reminders.cancel(id);
       await repo.delete(id);
+      saver.current?.discard();
+      saver.current = null;
+      current.current = null;
+      setNote(null);
+      setInitial(null);
       setConfirmDelete(false);
-      next.current = () => goBack();
+      refresh();
+      next.current = () => router.dismissTo("/");
       setLeaving(true);
-    });
+    } catch {
+      setError(
+        "The note could not be deleted. It is still here. Please try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -216,6 +236,7 @@ export default function NoteEditor() {
                 </View>
                 <Menu
                   actions={[
+                    { label: "Add tags", run: () => setTagPicker(true) },
                     {
                       label: note.pinned ? "Unpin note" : "Pin note",
                       run: () => void flag("pinned"),
@@ -285,6 +306,26 @@ export default function NoteEditor() {
                 paddingBottom: 14,
               }}
             />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Add or change note tags"
+              disabled={busy}
+              onPress={() => setTagPicker(true)}
+              style={({ pressed }) => ({
+                minHeight: 44,
+                justifyContent: "center",
+                paddingBottom: 8,
+                opacity: pressed ? 0.6 : 1,
+              })}
+            >
+              {tags.length ? (
+                <TagChips tags={tags} />
+              ) : (
+                <Label muted style={{ fontSize: 13 }}>
+                  ＋ Tags
+                </Label>
+              )}
+            </Pressable>
             {reminderLabel ? (
               <Label muted style={{ paddingVertical: 10, fontSize: 12 }}>
                 {reminderLabel}
@@ -306,13 +347,21 @@ export default function NoteEditor() {
             />
           </>
         ) : (
-          !error && (
+          !error &&
+          !leaving && (
             <View style={{ paddingTop: 40 }}>
               <Label muted>Opening your page…</Label>
             </View>
           )
         )}
       </KeyboardAvoidingView>
+      {tagPicker && note && (
+        <TagSheet
+          noteId={id}
+          close={() => setTagPicker(false)}
+          onSaved={setTags}
+        />
+      )}
       <Sheet
         visible={confirmDelete}
         close={() => {
@@ -332,7 +381,7 @@ export default function NoteEditor() {
           label="Delete note permanently"
           danger
           disabled={busy}
-          onPress={confirmDeletion}
+          onPress={() => void confirmDeletion()}
         />
         <Message text={error} error />
       </Sheet>

@@ -25,6 +25,21 @@ The design, ON app icon and light/dark splash updates are saved in the source. N
 - Editor font choices: System, Sans, Serif, Book and Monospace. These use offline device font stacks; the exact face depends on the platform, with fallbacks when a font is unavailable.
 - Your original ON icon is retained.
 
+## Deletion and in-app branding fix
+
+Confirmed deletion discards the note without requiring an editor snapshot or a successful autosave first. After the database delete succeeds, queued autosave is stopped, the old editor content is cleared, the notebook refreshes and navigation returns home. Failed deletion keeps the note open and reports an error.
+
+A small ON icon and OFFDAY Note name appear above home search; the search/Settings row and minimalist layout are retained. Launcher/splash artwork and the OFFDAY Note app name remain configured in `app.json`. Run prebuild below to apply them to native resources, then install the newly generated APK over your current app.
+
+## Colored tags and long-press actions
+
+- Hold any note to open its actions: Add tags, reminder, pin/unpin, archive/restore and confirmed delete.
+- Choose Add tags to open the bottom sheet. Select several existing tags or enter a new tag name, pick Olive/Blue/Purple/Rose/Amber/Teal and tap Create tag. Tap Done to save the note’s assignments. Closing the sheet cancels assignment changes; a newly created tag remains available for other notes.
+- While creating or editing a note, tap Tags below its title or use Add tags in the note menu.
+- Assigned tags appear as compact chips with colored dots in the list and editor.
+- Tags stay offline in SQLite. The schema update preserves existing notes. Version 2 backups include colors and assignments; old version 1 backups still restore.
+- No app build or commit was run for this feature. Native long-press and keyboard/sheet layout still need checking after your build.
+
 ## Build an Android APK
 
 Run these commands from your terminal:
@@ -88,7 +103,7 @@ npm run ios
 
 - Strict TypeScript check passed.
 - Expo lint passed.
-- All 31 tests passed, including the keyboard viewport/touch-control regression test.
+- All 39 tests passed, including the keyboard viewport/touch-control regression test.
 - No app build was run. The earlier APK and browser export do not include the current design and branding until you rebuild them.
 - Icon/splash dimensions, transparency and adaptive-icon safe padding are checked by `prepare:brand`. Native splash/launcher appearance still needs verification after your build.
 
